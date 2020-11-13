@@ -1,0 +1,24 @@
+﻿
+@{
+    ViewData["Title"] = "Hub";
+}
+@section Scripts {
+
+    <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
+    <script type="text/javascript">
+
+            var connection = new signalR.HubConnectionBuilder().configureLogging(signalR.LogLevel.Debug).withAutomaticReconnect([1000, 1000, 1000, 1000]).withUrl("/HubClass").build();
+
+            connection.start().then(() => {
+                console.log(connection.connectionState);
+
+                //HubClass içerisinde ilgili metodum
+                connection.invoke("SendMessage", "Gönderdiğim mesaj gidecekmi ? ");
+            }).catch((err) => { console.log(err) })
+
+            connection.on("ReceiveMessage", (message) => {
+                console.log(message);
+            })
+
+    </script>
+}

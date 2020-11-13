@@ -1,0 +1,204 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+@section Scripts{
+    <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
+    <script type="text/javascript">
+
+        $(document).ready(() => { //herşey hazır olduktan sonra jquey kodlarım çalışmasını istediğim için
+
+            function statusShow() {
+                $("#conStatus").text(connection.connectionState);
+            }
+
+            function Start() {
+                connection.start().then(() => {
+                    statusShow();
+                    $("#loading").hide();
+
+                    //connection.invoke("GetNamesAsync");
+                    connection.invoke("GetNamesByGroup");
+
+                }).catch((err) => {
+                    console.log(err);
+                    setTimeout(() => Start(), 2000) //2 saniye sonra start metodunu yani kendini tekrar çalıştır dedim recursive method misali
+
+                });
+
+            }
+
+            //withAutomaticReconnect([1000,1000,1000,1000]) hub ile baglantı koptugunda 4 kere 1 saniye aralıklarla huba istek atıp baglanmaya deniyecek. Normalde 0,2,10,30 olan saniyeleri ezerek hepsini 1 yaptım
+            var connection = new signalR.HubConnectionBuilder().configureLogging(signalR.LogLevel.Debug).withAutomaticReconnect([1000, 1000, 1000, 1000]).withUrl("https://localhost:44317/HubClass").build(); //hangi huba baglanacıgını belirttim. configureLogging metodum loglama işlemi gerçekleşttirmektedir.
+
+            statusShow(); // o andaki baglantını durumunu con statuse aktarıyorum.
+
+            Start();
+
+            statusShow();
+
+            //loading methods
+            connection.onreconnecting(err => {
+                $("#loading").show();
+                statusShow();
+            })
+
+            connection.onreconnected(connectionId => {
+                $("#loading").hide(); //baglantı başarılıysa loading iconunu gizle
+                statusShow();
+                console.log("Baglantı Hatası: " + err)
+                console.log("connectionId:" + connectionId)
+            })
+
+            connection.onclose(() => {
+                $("#loading").hide();
+                statusShow();
+                Start();
+            })
+
+            connection.on("ReceiveClientCount", (clientCount) => {
+                $("#clientCount").text(clientCount);
+            })
+
+            connection.on("Notify", (countText) => {
+                $("#notify").html(`<div class="alert alert-warning">${countText}</div >`)
+            })
+
+            connection.on("ReceiveMessageByGroup", (name, teamId) => {
+                let listName;
+
+                if (teamId == 1)
+                    listName = "ATeamList";
+                else
+                    listName = "BTeamList";
+
+                $(`#${listName}`).append(`<li class="list-group-item">${name}</li>`)
+            })
+
+            connection.on("Error", (errorText) => {
+                alert(errorText);
+            })
+
+            connection.on("ReceiveNames", (names) => {
+                $("#namesList").empty();
+
+                names.forEach((item, index) => {
+                    $("#namesList").append(`<li class="list-group-item">${item}</li>`)
+                })
+            })
+
+            //click methods
+            $("#btnNameSave").click(() => {
+
+                connection.invoke("SendNameAsync", $("#txtName").val()).catch((err) =>
+                    console.log(err))
+            })
+
+            //on methods
+            connection.on("ReceiveName", (name) => { /*console.log(name); */ $("#namesList").append(`<li class="list-group-item"> ${name} </li>`) }) //client metotlarına subgrid olma işlemi
+
+            //group kaydet butonuna tıklayınca çalıacak olan ajax kodum
+            $("#btnNameGroup").click(() => {
+                let name = $("#txtName").val();
+                let teamName = $("input[type=radio]:checked").val();
+
+                if (teamName == null) {
+                    alert("Takım Seçiniz !!! Takım Seçmeden grup kaydetme işlemi yapılamaz");
+                    return;
+                }
+
+                connection.invoke("SendNameByGroup", name, teamName).catch((err) => {
+                    console.log(err);
+                })
+            })
+
+            connection.on("ReceiveProduct", (product) => {
+                console.log(product);
+            })
+
+            connection.on("ReceiveNamesByGroup", (teams) => {
+                teams.forEach((team, index) => {
+                    let listName;
+
+                    if (team.teamId == 1)
+                        listName = "ATeamList";
+                    else
+                        listName = "BTeamList";
+
+                    team.users.forEach((user, index2) => {
+                        $(`#${listName}`).append(`<li class="list-group-item">${user.name}</li>`)
+                    })
+                })
+            })
+
+            $("input[type=radio]").change(() => {
+                let value = $(`input[type=radio]:checked`).val();
+                if (value == "Team A") {
+                    connection.invoke("AddToGroup", value);
+                    connection.invoke("RemoveToGroup", "Teaam B"); //A grubuna girerse B grubunda varsa sil
+                }
+                else {
+                    connection.invoke("AddToGroup", value);
+                    connection.invoke("RemoveToGroup", "Team A"); //B grubuna girerse a grubunda varsa a grubunda olmasın artık
+                }
+            })
+
+            $("#btnProduct").click(() => {
+                let product = { "Id": 1, "Name": "Deneme Ürün - 1", "Price": 100, "Stock": 50 }; 
+
+                connection.invoke("SendProduct", product);
+                alert("F12 Tuşuna basıp console ekranındaki çıktıya bakınız deneme ürünleri console ekranında gösteriliyorsa hub metodum çalışıyor demektir :))")
+            })
+
+        })
+
+    </script>
+}
+
+<div class="row">
+    <div class="col-md-8 offset-2">
+        <input class="form-control" type="text" id="txtName" /><br />
+        <button style="width:100%" class="btn btn-success" id="btnNameSave">Hub İsim Kaydet</button><br />
+        <button style="width:100%" class="btn btn-primary mt-3" id="btnNameGroup">Grup İsim Kaydet</button><br />
+        <button style="width:100%" class="btn btn-warning mt-3" id="btnProduct">Ürün Kaydet</button><br />
+        <div class="alert alert-success mt-2" style="margin-top:6px;">
+            <div class="float-left">
+                Baglantı Durumu: <strong id="conStatus"></strong>
+                ,Client Sayısı: <strong id="clientCount"></strong>
+            </div>
+            <div class="float-right">
+                <div id="loading" class="spinner-border" role="status">
+                    <span class="sr-only">Loading...</span>
+                </div>
+            </div>
+            <div class="clearfix"></div>
+        </div>
+        <div id="notify"></div>
+    </div>
+
+    <div class="col-md-8 offset-md-2">
+        <div class="row ml-10">
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" style="margin-left:150px;" name="TeamGroup" value="Team A" />
+                <label class="form-check-label">A Takımı</label>
+            </div>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" style="margin-left:150px;" name="TeamGroup" value="Team B" />
+                <label class="form-check-label">B Takımı</label>
+            </div>
+        </div>
+        <div class="col-md-8 offset-2">
+            <div class="row">
+                <div class="col-md-6">
+                    <h2>A Takımı Futbolcuları</h2>
+                    <ul class="list-group" id="ATeamList"></ul>
+                </div>
+                <div class="col-md-6">
+                    <h2>B Takımı Futbolcuları</h2>
+                    <ul class="list-group" id="BTeamList"></ul>
+                </div>
+            </div>
+            <ul class="list-group" id="namesList"></ul>
+        </div>
+    </div>
+</div>
